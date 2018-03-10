@@ -1,11 +1,14 @@
 #################################################################################
 # DonorChoose project ###########################################################
+# Train data preparation ########################################################
 #################################################################################
 
 
 # Environment ==================================================================
 rm(list = ls())
 cat('\014')
+
+setwd("C:/Users/aLook/Documents/Machine_Learning/DonorChooseProject")
 
 library(data.table)
 library(futile.logger)
@@ -24,9 +27,15 @@ source('scripts/helpers.R')
 
 # Parameters ===================================================================
 
-N_ROWS <- 100000 # number of rows for modelling
-N_TOPICS_ESSAYS <- 75 # number of topics for essay data
+N_ROWS <- 50000 # number of rows for modelling
+N_TOPICS_ESSAYS <- 50 # number of topics for essay data
 N_TOPICS_RESOURCES <- 30 # number of topics for resources data
+
+# # Testing parameters
+# N_ROWS <- 100 # number of rows for modelling
+# N_TOPICS_ESSAYS <- 2 # number of topics for essay data
+# N_TOPICS_RESOURCES <- 2 # number of topics for resources data
+
 
 TRAIN_PROB <- 0.75 # fraction of train
 SEED <- 2911 # random seed for reproducibility
@@ -98,12 +107,15 @@ topics_tfidf <- tapply(topics_dtm_train$v / row_sums(topics_dtm_train)[topics_dt
 
 # exclude terms with low tf-idf
 topics_dtm_train <- topics_dtm_train[, topics_tfidf >= 0.1]
+rm(topics_tfidf)
+
 topics_dtm_train <- topics_dtm_train[row_sums(topics_dtm_train) > 0,]
 
 
 # 50 topics selected 
 flog.info('Run LDA...')
 topics_lda <- LDA(topics_dtm_train, k = N_TOPICS_ESSAYS, control = list(seed = SEED))
+rm(topics_dtm_train)
 flog.info('LDA finished...')
 
 # beta matrix - words per topic
@@ -150,15 +162,25 @@ openxlsx::writeData(wb, 'TM_TOP_TERMS_FREQ', generated_top_terms_freq)
 # predict topics in the topics data
 topics <- append_topics(topics, topics_dtm, topics_lda)
 
+# save topics_lda
+flog.info('Saving topics_lda...')
+save(topics_lda, file = './outputs/topics_lda.rda', compress = 'bzip2')
+rm(topics_lda, topics_dtm)
+
 # Aggregate topics data to features =========================================
 
 flog.info('Aggregate topics data...')
 
-topics_agg <- aggregate_topics(topics)
+topics <- aggregate_topics(topics)
 
 setkey(fullData, id)
-fullData <- merge(fullData, topics_agg, all.x = TRUE)
+fullData <- merge(fullData, topics, all.x = TRUE)
+
+# remove unnecessary variables
 fullData <- fullData[, !c('teacher_id', 'project_submitted_datetime', 'project_title', paste0('project_essay_', 1:4), 'project_resource_summary')]
+
+# remove topics
+rm(topics)
 
 # Resources data features =======================================================
 
@@ -183,6 +205,7 @@ resources_dtm_train <- resources_dtm_train[row_sums(resources_dtm_train) > 0,]
 # 20 resources topics selected 
 flog.info('Run LDA on resources...')
 resources_lda <- LDA(resources_dtm_train, k = N_TOPICS_RESOURCES, control = list(seed = SEED))
+rm(resources_dtm_train)
 flog.info('LDA finished...')
 
 # beta matrix - words per topic
@@ -226,19 +249,24 @@ openxlsx::saveWorkbook(wb, file = paste0('./outputs/', format(Sys.Date(), '%Y%m%
 
 resources <- append_topics(resources, resources_dtm, resources_lda, 'RC', key = 'resource_id')
 
+# save resources_lda
+flog.info('Saving resources_lda...')
+save(resources_lda, file = './outputs/resources_lda.rda', compress = 'bzip2')
+rm(resources_lda, resources_dtm)
+
 # Aggregate resources data to features =========================================
 
 flog.info('Aggregate resources data...')
 
-resources_agg <- aggregate_resources(resources)
+resources <- aggregate_resources(resources)
 
 setkey(fullData, id)
-setkey(resources_agg, id)
-fullData <- merge(fullData, resources_agg, all.x = TRUE)
+setkey(resources, id)
+fullData <- merge(fullData, resources, all.x = TRUE)
 
+rm(resources)
 
 # Save data and outputs ========================================================
-
+flog.info('Save the data...')
 save(fullData, file = './outputs/fullData.rda', compress = 'bzip2')
-save(topics_lda, resources_lda, file = './outputs/models_lda.rda', compress = 'bzip2')
 

@@ -39,14 +39,9 @@ clean_donor_resources <- function(data, sample_data = NULL) {
   
   # merge train/test split
   setkey(data, id)
-  setkey(sample_data, id)
-  
-  if (!is.null(sample_data)){
-    data <- merge(data, sample_data, all.x = TRUE)
-  }
   
   # add resource id
-  data[, resource_id := factor(1:nrow(resources))]
+  data[, resource_id := factor(1:nrow(data))]
   setkey(data, resource_id, id)
   
   return(data)
@@ -240,16 +235,22 @@ append_topics <- function(topics_data,
 }
 
 
-aggregate_topics <- function(topics_data) {
+aggregate_topics <- function(topics_data, is_train = TRUE) {
   
   topics_agg <- data.table::melt(topics_data,
                                  id_vars = c('document', 'id', 'sample', 'essay', 'text'),
                                  variable.name = 'feature',
                                  value.name = 'value')
   
+  if (is_train == TRUE) {
+    keys <- c('id', 'sample', 'feature')
+  } else {
+    keys <- c('id', 'feature')
+  }
+  
   topics_agg <- topics_agg[, .(MEAN = mean(value),
                                MIN = min(value),
-                               MAX = max(value)), by = .(id, sample, feature)]
+                               MAX = max(value)), keyby = keys]
   
   topics_agg <- data.table::dcast(topics_agg,
                                   id ~ feature,
@@ -260,7 +261,7 @@ aggregate_topics <- function(topics_data) {
 }
 
 
-aggregate_resources <- function(resources_data) {
+aggregate_resources <- function(resources_data, is_train = TRUE) {
   
   resources_agg <- data.table::melt(resources_data,
                                     id_vars = c('resource_id', 'id', 'sample', 'description', 'text'),
@@ -269,12 +270,18 @@ aggregate_resources <- function(resources_data) {
   
   resources_agg[is.na(value), value := 0]
   
+  if (is_train == TRUE) {
+    keys <- c('id', 'sample', 'feature')
+  } else {
+    keys <- c('id', 'feature')
+  }
+  
   resources_agg <- resources_agg[, .(SUM = sum(value),
                                      MEAN = mean(value),
                                      SD = ifelse(is.na(sd(value)), 0, sd(value)),
                                      MIN = min(value),
                                      MAX = max(value),
-                                     N_ITEMS = .N), by = .(id, sample, feature)]
+                                     N_ITEMS = .N), keyby = keys]
   
   resources_agg <- data.table::dcast(resources_agg,
                                      id ~ feature,
