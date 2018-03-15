@@ -44,6 +44,11 @@ clean_donor_resources <- function(data, sample_data = NULL) {
   data[, resource_id := factor(1:nrow(data))]
   setkey(data, resource_id, id)
   
+  # merge sample data
+  if (!is.null(sample_data)) {
+    data <- merge(data, sample_data, all.x = TRUE)
+  }
+  
   return(data)
 }
 
@@ -132,6 +137,7 @@ data_to_dtm <- function(data,
                         doc_var = 'document',
                         text_var = 'text') {
   library(data.table)
+  library(tidytext)
   
   data <- data[, c(doc_var, text_var), with = FALSE]
   setnames(data, old = c(doc_var, text_var), new = c('document', 'text'))
@@ -144,8 +150,11 @@ data_to_dtm <- function(data,
   }
   
   data <- data.table(anti_join(data, stopwords) %>%
-    count(document, word, sort = TRUE) %>%
+    dplyr::count(document, word, sort = TRUE) %>%
     ungroup(), key = 'document')
+  
+  # remove empty factors
+  data[, document := factor(document)]
   
   data_dtm <- cast_dtm(data, document, word, n)
   
@@ -229,6 +238,7 @@ append_topics <- function(topics_data,
 
   # merge to topics
   setkeyv(modelled_topics, key)
+  setkeyv(topics_data, key)
   topics_data <- merge(topics_data, modelled_topics, all.x = TRUE)
   
   return(topics_data)
@@ -263,12 +273,12 @@ aggregate_topics <- function(topics_data, is_train = TRUE) {
 
 aggregate_resources <- function(resources_data, is_train = TRUE) {
   
-  resources_agg <- data.table::melt(resources_data,
+  resources_data <- data.table::melt(resources_data,
                                     id_vars = c('resource_id', 'id', 'sample', 'description', 'text'),
                                     variable.name = 'feature',
                                     value.name = 'value')
   
-  resources_agg[is.na(value), value := 0]
+  resources_data[is.na(value), value := 0]
   
   if (is_train == TRUE) {
     keys <- c('id', 'sample', 'feature')
@@ -276,26 +286,26 @@ aggregate_resources <- function(resources_data, is_train = TRUE) {
     keys <- c('id', 'feature')
   }
   
-  resources_agg <- resources_agg[, .(SUM = sum(value),
-                                     MEAN = mean(value),
-                                     SD = ifelse(is.na(sd(value)), 0, sd(value)),
-                                     MIN = min(value),
-                                     MAX = max(value),
-                                     N_ITEMS = .N), keyby = keys]
+  resources_data <- resources_data[, .(SUM = sum(value),
+                                       MEAN = mean(value),
+                                       SD = ifelse(is.na(sd(value)), 0, sd(value)),
+                                       MIN = min(value),
+                                       MAX = max(value),
+                                       N_ITEMS = .N), keyby = keys]
   
-  resources_agg <- data.table::dcast(resources_agg,
+  resources_data <- data.table::dcast(resources_data,
                                      id ~ feature,
                                      value.var = c('SUM', 'MEAN', 'SD', 'MIN', 'MAX', 'N_ITEMS'),
                                      fill = 0)
   
   
-  names(resources_agg)[names(resources_agg) == 'N_ITEMS_quantity'] <- 'N_ITEMS'
+  names(resources_data)[names(resources_data) == 'N_ITEMS_quantity'] <- 'N_ITEMS'
   
-  resources_agg[, names(resources_agg)[grepl('N_ITEMS_', names(resources_agg))] := NULL]
+  resources_data[, names(resources_data)[grepl('N_ITEMS_', names(resources_data))] := NULL]
   
   
   
-  return(resources_agg)
+  return(resources_data)
 }
 
 
@@ -310,7 +320,7 @@ clean_for_modelling <- function(data,
   
   for (i in names(data)) {
     if (is.numeric(data[[i]]) & any(is.na(data[[i]]))) {
-      fullData[is.na(get(i)), (i) := 0]
+      data[is.na(get(i)), (i) := 0]
     }
   }
   

@@ -10,6 +10,7 @@ cat('\014')
 
 setwd("C:/Users/aLook/Documents/Machine_Learning/DonorChooseProject")
 
+library(caret)
 library(data.table)
 library(futile.logger)
 library(lubridate)
@@ -27,8 +28,8 @@ source('scripts/helpers.R')
 
 # Parameters ===================================================================
 
-N_ROWS <- 50000 # number of rows for modelling
-N_TOPICS_ESSAYS <- 50 # number of topics for essay data
+N_ROWS <- 30000 # number of rows for modelling
+N_TOPICS_ESSAYS <- 75 # number of topics for essay data
 N_TOPICS_RESOURCES <- 30 # number of topics for resources data
 
 # # Testing parameters
@@ -71,6 +72,8 @@ fullData[, sample := factor(sample(c('train', 'test'),
                                    replace = TRUE,
                                    prob = c(TRAIN_PROB, 1 - TRAIN_PROB)))]
 
+sampleData <- fullData[, .(id, sample)]
+setkey(sampleData, id)
 
 # Data for text mining =========================================================
 
@@ -150,13 +153,16 @@ generated_top_terms_freq <- generated_topics %>%
   arrange(topic, -beta)
 
 
+rm(generated_topics)
+
 # export results to xlsx
 wb <- openxlsx::createWorkbook()
 openxlsx::addWorksheet(wb, 'TM_TOP_TERMS_LOG')
 openxlsx::writeData(wb, 'TM_TOP_TERMS_LOG', generated_top_terms_log)
 openxlsx::addWorksheet(wb, 'TM_TOP_TERMS_FREQ')
 openxlsx::writeData(wb, 'TM_TOP_TERMS_FREQ', generated_top_terms_freq)
-# openxlsx::saveWorkbook(wb, file = paste0('./outputs/', format(Sys.Date(), '%Y%m%d'), '_outputs.xlsx'), overwrite = TRUE)
+
+rm(overall, generated_top_terms_log, generated_top_terms_freq)
 
 
 # predict topics in the topics data
@@ -177,19 +183,28 @@ setkey(fullData, id)
 fullData <- merge(fullData, topics, all.x = TRUE)
 
 # remove unnecessary variables
-fullData <- fullData[, !c('teacher_id', 'project_submitted_datetime', 'project_title', paste0('project_essay_', 1:4), 'project_resource_summary')]
+fullData <- fullData[, !c('teacher_id', 'project_submitted_datetime', 'project_title', paste0('project_essay_', 1:4), 'project_resource_summary'), with = FALSE]
 
 # remove topics
 rm(topics)
 
+# Save full data and ============================================================
+flog.info('Save the data...')
+save(fullData, file = './outputs/fullData.rda', compress = 'bzip2')
+rm(fullData)
+
+
 # Resources data features =======================================================
 
 flog.info('Clean resources data...')
-resources <- clean_donor_resources(resources, data.table(fullData[, .(id, sample)], key = 'id'))
+resources <- clean_donor_resources(resources, sampleData)
+rm(sampleData)
 
 flog.info('Create resources corpora...')
 resources_dtm <- data_to_dtm(resources, doc_var = 'resource_id', text_var = 'description')
 resources_dtm <- resources_dtm[row_sums(resources_dtm) > 0,]
+
+
 
 # train sample dtm for resources
 resources_dtm_train <- data_to_dtm(resources[sample == 'train'], doc_var = 'resource_id', text_var = 'description')
@@ -205,8 +220,14 @@ resources_dtm_train <- resources_dtm_train[row_sums(resources_dtm_train) > 0,]
 # 20 resources topics selected 
 flog.info('Run LDA on resources...')
 resources_lda <- LDA(resources_dtm_train, k = N_TOPICS_RESOURCES, control = list(seed = SEED))
-rm(resources_dtm_train)
+rm(resources_dtm_train, resources_tfidf)
 flog.info('LDA finished...')
+
+# save.image(file = paste0('./outputs/image_', format(Sys.Date(), '%Y%m%d'), '.rda'),
+#            compress = 'bzip2')
+
+# load('C:/Users/aLook/Dropbox/DonorsChooseProject/temp_outputs/image_20180312.rda')
+
 
 # beta matrix - words per topic
 generated_resources <- tidy(resources_lda, matrix = "beta")
@@ -239,6 +260,7 @@ resources_top_terms_freq <- generated_resources %>%
   ungroup() %>%
   arrange(topic, -beta)
 
+rm(generated_resources)
 
 # export results to xlsx
 openxlsx::addWorksheet(wb, 'RES_TOP_TERMS_LOG')
@@ -247,6 +269,9 @@ openxlsx::addWorksheet(wb, 'RES_TOP_TERMS_FREQ')
 openxlsx::writeData(wb, 'RES_TOP_TERMS_FREQ', resources_top_terms_freq)
 openxlsx::saveWorkbook(wb, file = paste0('./outputs/', format(Sys.Date(), '%Y%m%d'), '_outputs.xlsx'), overwrite = TRUE)
 
+rm(overall, resources_top_terms_log, resources_top_terms_freq)
+
+debugonce(append_topics)
 resources <- append_topics(resources, resources_dtm, resources_lda, 'RC', key = 'resource_id')
 
 # save resources_lda
@@ -258,15 +283,17 @@ rm(resources_lda, resources_dtm)
 
 flog.info('Aggregate resources data...')
 
+# debugonce(aggregate_resources)
 resources <- aggregate_resources(resources)
-
-setkey(fullData, id)
 setkey(resources, id)
+
+# Merge to full data and save again =============================================
+flog.info('Save the data...')
+load('./outputs/fullData.rda')
+
 fullData <- merge(fullData, resources, all.x = TRUE)
 
-rm(resources)
+# clean data for modelling
+fullData <- clean_for_modelling(fullData)
 
-# Save data and outputs ========================================================
-flog.info('Save the data...')
 save(fullData, file = './outputs/fullData.rda', compress = 'bzip2')
-
