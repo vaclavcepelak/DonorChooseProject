@@ -48,7 +48,6 @@ clean_donor_resources <- function(data, sample_data = NULL) {
   if (!is.null(sample_data)) {
     data <- merge(data, sample_data, all.x = TRUE)
   }
-  
   return(data)
 }
 

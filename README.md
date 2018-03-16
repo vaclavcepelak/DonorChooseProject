@@ -43,6 +43,8 @@ Proposals also include resources requested. Each project may include multiple re
 
 ## The modelling methods
 
+For the memory reasons, **only 30,000 cases** from the train set were used for modelling.
+
 The **gradient boosting machine** is applied for the binary classification problem. As the features are mostly textual data, the **topic models** (**Latent Dirichlet Allocation**) are applied on essays and on resources to generate numeric features from the textual data. Features are computed as a probability of a text being assigned under a certain topic (75 topics for essays, 20 topics for resources). All the variables with multiple assignments per one application are aggregated using several functions (`mean`, `sd`, `min`, `max`, `.N`).
 
 The `gbm` library (with the`caret` library as a wrapper) in R is used; 4-fold cross validation is performed and grid search is applied for the parameter tuning.
