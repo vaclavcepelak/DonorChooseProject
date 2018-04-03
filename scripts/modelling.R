@@ -30,6 +30,9 @@ flog.info('Prepare data...')
 trainset <- fullData[sample == 'train', !'sample', with = FALSE]
 testset <- fullData[sample == 'test', !'sample', with = FALSE]
 
+fwrite(trainset, './outputs/train.csv')
+fwrite(testset, './outputs/test.csv')
+
 # Feature selection =============================================================
 
 flog.info('Feature selection...')
