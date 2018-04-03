@@ -59,6 +59,8 @@ All scripts are stored in the `/scripts` folder. All the outputs of each script 
 
 `modelling.R` : Performs the feature selection and gbm modelling using grid search; gbm model exported to an `.rda` file + additional outputs (ROC curve, confusion matrix) are exported
 
+`modelling_keras.ipynb` : Performs the recursive neural networks modelling in Python (with improved AUC)
+
 `data_test.R` : The data cleaning is applied on the test sample and topic scores are predicted based on the models from the train set (data exported to an `.rda` file)
 
 `prediction.R` : A simple script which takes the test data and gbm model and predicts the scores for submission (exports to csv)
